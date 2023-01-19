@@ -1,0 +1,173 @@
+---
+title: "Lab 2"
+author: "Kira Archipov"
+date: "2023-01-19"
+output: html_document
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(palmerpenguins)
+library(AICcmodavg)
+library(equatiomatic)
+```
+
+### Predicting penguin mass 
+We want to create a model we can use in the field to quickly and easily estimate a penguin's mass, based on the subset of data in the `palmerpenguins` package.
+
+```{r}
+penguins_clean <- penguins %>%
+  drop_na() %>%
+  rename(mass = body_mass_g,
+         bill_l = bill_length_mm,
+         bill_d = bill_depth_mm,
+         flip_l = flipper_length_mm)
+
+mdl1 <- lm(mass ~ bill_l + bill_d + flip_l + species + sex + island, data = penguins_clean)
+```
+
+
+### creating a formula to be used in model 1
+```{r}
+f1 <- mass ~ bill_l + bill_d + flip_l + species + sex + island
+
+# we can take this a plug it in to out model in place of lm(), to clean up code 
+
+mdl1 <- lm(f1, data = penguins_clean)
+```
+
+
+### New models + formulas 
+```{r}
+f2 <- mass ~ bill_l + bill_d + flip_l + species + sex 
+
+mdl2 <- lm(f2, data = penguins_clean)
+
+f3 <- mass ~ bill_d + flip_l + species + sex
+
+mdl3 <- lm(f3, data = penguins_clean)
+
+#using AIC to see which is better 
+AIC(mdl1, mdl2, mdl3)
+#model 2 has lower AIC, which is preferred 
+
+#try it using BIC, which rewards parsimony more strongly 
+BIC(mdl1, mdl2, mdl3)
+```
+
+
+
+```{r}
+AICcmodavg::AICc(mdl1)
+AICcmodavg::AICc(mdl2)
+AICcmodavg::AICc(mdl3)
+#correction works better for really small samples 
+
+aictab(list(mdl1, mdl2, mdl3))
+bictab(list(mdl1, mdl2, mdl3))
+
+# if difference is <2 its weak evidence that the smallest BIC model is better, 2-6 is moderately better, >6 strong evidence that the smallest BIC is the superior model 
+```
+
+### Compare models using K-fold cross validation - using manual entry 
+1) break data into x folds (10 in this example)
+2) take portion out 
+```{r}
+folds <- 10 
+
+fold_vec <- rep(1:folds, length.out = nrow(penguins_clean))
+
+#starting with exact same points of random # generator, would help with replication, only need to set it once and then it will be for all other random calls 
+set.seed(42)
+
+penguins_fold <- penguins_clean %>% 
+  mutate(group = sample(fold_vec, size = n(), replace = FALSE))
+
+table(penguins_fold$group)
+
+test_df <- penguins_fold %>% 
+  filter(group == 1)
+train_df <- penguins_fold %>% 
+  filter(group != 1)
+
+```
+
+
+### Creating a function comparing 2 vectors 
+
+```{r}
+calc_rmse <- function(x, y) {
+  rmse <- (x - y)^2 %>% 
+    mean() %>% 
+    sqrt()
+  return(rmse)
+}
+```
+
+
+
+```{r}
+training_mdl1 <- lm(f1, data = train_df)
+
+training_mdl2 <- lm(f2, data = train_df)
+
+training_mdl3 <- lm(f3, data = train_df)
+
+#see how well these predict in the test data frame (the group that was held aside)
+
+predict_test <- test_df %>% 
+  mutate(model1 = predict(training_mdl1, test_df), 
+         model2 = predict(training_mdl2, test_df), 
+         model3 = predict(training_mdl3, test_df))
+
+# how far away are these predicted values from the known values, how well are we predicting 
+rmse_predict_test <- predict_test %>% 
+  summarize(rmse_mdl1 = calc_rmse(model1, mass), 
+            rmse_mdl2 = calc_rmse(model2, mass), 
+            rmse_mdl3 = calc_rmse(model3, mass))
+
+#this is one string of the marble example !!!
+```
+
+
+### lets iterate!
+
+```{r}
+#create an empty data frame
+rmse_df <- data.frame()
+
+#foreloops!
+
+for(i in 1:folds) {
+  kfold_test_df <- penguins_fold %>% 
+    filter(group == i)
+  kfold_train_df <- penguins_fold %>% 
+    filter(group != i)
+  
+  kfold_mdl1 <- lm(f1, data = kfold_train_df)
+  kfold_mdl2 <- lm(f2, data = kfold_train_df)
+  kfold_mdl3 <- lm(f3, data = kfold_train_df)
+  
+  kfold_predict_df <- kfold_test_df %>% 
+    mutate(mdl1 = predict(kfold_mdl1, kfold_test_df), 
+           mdl2 = predict(kfold_mdl2, .),
+           mdl3 = predict(kfold_mdl3, .))
+  kfold_rmse_df <- kfold_predict_df %>% 
+    summarize(rmse_mdl1 = calc_rmse(mdl1, mass), 
+              rmse_mdl2 = calc_rmse(mdl2, mass),
+              rmse_mdl3 = calc_rmse(mdl3, mass), 
+              test_gp = i)
+  rmse_df <- bind_rows (rmse_df, kfold_rmse_df)
+}
+
+```
+
+
+
+
+
+
+
+
