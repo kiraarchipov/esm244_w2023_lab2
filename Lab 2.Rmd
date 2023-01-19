@@ -164,10 +164,28 @@ for(i in 1:folds) {
 
 ```
 
+### Choosing best model - take average of different rows and see which one on average has best results 
+
+```{r}
+rmse_df %>% 
+  summarize(mean_rmse_mdl1 = mean(rmse_mdl1),
+            mean_rmse_mdl2 = mean(rmse_mdl2), 
+            mean_rmse_mdl3 = mean(rmse_mdl3))
 
 
+```
+Based on this - Model 2 has the best predictive ability of possible options
+
+###Finalize the model!
+```{r}
+final_mdl <- lm(f2, data = penguins_clean)
+```
+
+Our Final Model: 
+`r equatiomatic::extract_eq(final_mdl, wrap = TRUE)`
 
 
-
+And with coefficients: 
+`r equatiomatic::extract_eq(final_mdl, wrap = TRUE, use_coefs = TRUE)` 
 
 
